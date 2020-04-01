@@ -15,14 +15,14 @@ on which apps have focus.
 # Usage
 
 ```
-xcape-hs BINDINGS REGEXP [[REGEXP] ...]
+xcape-hs [-t TIMEOUT] BINDINGS REGEXP [[REGEXP] ...]
 ```
 
-Where `BINDINGS` are the keys supplied to the `-e` argument of `xcape` and
-`REGEXP` is a POSIX-style regular expression matching a window title for which
-xcape will not be running when it is in focus. To find a window title, use the
-`xprop` program and look for the `WM_NAME` and `_NET_WM_NAME` atoms in the
-output.
+Where `TIMEOUT` and `BINDINGS` are the timeout argument and the key bindings to
+be passed to the `-t` and `-b` flags respectively in `xcape` and `REGEXP` is a
+POSIX-style regular expression matching a window app name for which xcape will
+not be running when it is in focus. To find the app name for a window, use the
+`xprop` program and look for the first member of the `WM_CLASS` atom.
 
 # Dependencies
 

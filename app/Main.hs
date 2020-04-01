@@ -13,8 +13,8 @@
 -- The process for doing this using Xlib:
 -- 1) Listen for PropertyNotify events from the root window
 -- 2) Of those events, filter those where the _NET_ACTIVE_WINDOW atom has changed
--- 3) Using the value of _NET_ACTIVE_WINDOW, get the title of the active window
--- 4) If active window matches a certain criteria, turn off xcape (vice versa)
+-- 3) Using the value of _NET_ACTIVE_WINDOW, get the app name of the active window
+-- 4) If the app name matches a certain criteria, turn off xcape (vice versa)
 --
 -- The matching criteria in (4) are POSIX regular expressions.
 --
