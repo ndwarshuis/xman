@@ -17,6 +17,11 @@
 -- 4) If active window matches a certain criteria, turn off xcape (vice versa)
 --
 -- The matching criteria in (4) are POSIX regular expressions.
+--
+-- Known limitations:
+-- this is agnostic to any keymap changes, so if the keymap is changed, xcape
+-- will not be updated or restarted. Furthermore, it is outside the scope of
+-- this program to bind multiple xcape mappings with multiple keymaps
 
 module Main where
 
@@ -76,6 +81,8 @@ data XMConf = XMConf
     , regexps         :: [String]
     , xcapeKeys       :: String
     }
+
+--------------------------------------------------------------------------------
 
 main :: IO ()
 main = getArgs >>= parse
