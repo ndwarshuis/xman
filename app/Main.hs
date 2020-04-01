@@ -94,7 +94,7 @@ parse _      = usage
 
 -- | Print the usage and exit
 usage :: IO ()
-usage = putStrLn "xman BINDINGS REGEXP [[REGEXP]...]"
+usage = putStrLn "xman BINDINGS REGEXP [[REGEXP] ...]"
 
 -- | Given xcape bindings and regular expression patterns to match the window
 -- titles we care about, initialize the XMan monad and run the main event loop
