@@ -2,19 +2,19 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 
 --------------------------------------------------------------------------------
--- | Xcape MANager (XMan) - a wrapper for managing Xcape
+-- | Xcape MANager (XMan) - a wrapper for managing xcape
 --
--- Xcape is a program to map keyrease events to keysyms, and is very useful
--- for making custom keymaps. However, it is not alwasys desirable to have this
--- running all the time; for example, VirtualBox will blend the XKB keymap with
--- that if the Guest OS, so Xcape may end up producing an extra keypress. The
--- solution is to turn off Xcape when certain windows are in focus.
+-- xcape is a program to map keyrelease events to keysyms, and is very useful
+-- for making custom keymaps. However, it is not always desirable to have this
+-- running all the time; for example, VirtualBox will blend the xkb keymap with
+-- that if the Guest OS, so xcape may end up producing an extra keypress. The
+-- solution is to turn off xcape when certain windows are in focus.
 --
 -- The process for doing this using Xlib:
 -- 1) Listen for PropertyNotify events from the root window
 -- 2) Of those events, filter those where the _NET_ACTIVE_WINDOW atom has changed
 -- 3) Using the value of _NET_ACTIVE_WINDOW, get the title of the active window
--- 4) If active window matches a certain criteria, turn off Xcape (vice versa)
+-- 4) If active window matches a certain criteria, turn off xcape (vice versa)
 --
 -- The matching criteria in (4) are POSIX regular expressions.
 
@@ -50,11 +50,11 @@ type WindowTitle = String
 --------------------------------------------------------------------------------
 -- | Central State+Reader+IO Monad (I wonder where this idea came from...)
 --
--- The Reader portion holds some of the key data structures from
--- X that we care about as well as the regular expression patterns to match and
--- the keys to pass the Xcape command.
+-- The Reader portion holds some of the key data structures from X that we care
+-- about as well as the regular expression patterns to match and the keys to
+-- pass the xcape command.
 --
--- The State portion holds the Xcape process handle (so we can kill it later)
+-- The State portion holds the xcape process handle (so we can kill it later)
 -- and the current window title.
 newtype XMan a = XMan (ReaderT XMConf (StateT XMState IO) a) deriving
   (Functor, Monad, MonadIO, MonadState XMState, MonadReader XMConf)
@@ -202,7 +202,7 @@ startOrKillXCape = do
       if any (t =~) r then stopXCape else startXCape
     Nothing -> startXCape
 
--- | Start Xcape if it is not already running
+-- | Start xcape if it is not already running
 startXCape :: XMan ()
 startXCape = do
   pID <- gets xcapeProcess
@@ -212,7 +212,7 @@ startXCape = do
     modify $ \s -> s { xcapeProcess = Just h }
     io $ print "started xcape"
 
--- | Stop Xcape if it is running
+-- | Stop xcape if it is running
 stopXCape :: XMan ()
 stopXCape = do
   pID <- gets xcapeProcess
