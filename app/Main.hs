@@ -1,5 +1,6 @@
 {-# LANGUAGE DeriveFunctor              #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE LambdaCase                 #-}
 
 --------------------------------------------------------------------------------
 -- | Xcape MANager (XMan) - a wrapper for managing xcape
@@ -22,6 +23,9 @@
 -- this is agnostic to any keymap changes, so if the keymap is changed, xcape
 -- will not be updated or restarted. Furthermore, it is outside the scope of
 -- this program to bind multiple xcape mappings with multiple keymaps
+
+-- TODO actually match the command associated with the window? Might be simpler
+-- and more reliable since the title can be changed on the fly
 
 module Main where
 
@@ -60,7 +64,6 @@ type WindowTitle = String
 -- pass the xcape command.
 --
 -- The State portion holds the xcape process handle (so we can kill it later)
--- and the current window title.
 newtype XMan a = XMan (ReaderT XMConf (StateT XMState IO) a) deriving
   (Functor, Monad, MonadIO, MonadState XMState, MonadReader XMConf)
 
@@ -68,10 +71,7 @@ instance Applicative XMan where
   pure = return
   (<*>) = ap
 
-data XMState = XMState
-    { currentTitle :: Maybe WindowTitle
-    , xcapeProcess :: Maybe ProcessHandle
-    }
+newtype XMState = XMState { xcapeProcess :: Maybe ProcessHandle }
 
 data XMConf = XMConf
     { display         :: Display
@@ -117,7 +117,7 @@ initXMan x r = do
              , regexps = r
              , xcapeKeys = x
              }
-      st = XMState { currentTitle = Nothing, xcapeProcess = Nothing }
+      st = XMState { xcapeProcess = Nothing }
   -- listen only for PropertyNotify events on the root window
   allocaSetWindowAttributes $ \a -> do
     set_event_mask a propertyChangeMask
@@ -143,7 +143,7 @@ updateXCape = do
   root <- asks theRoot
   prop <- io $ getWindowProperty32 dpy atom root
   case prop of
-    Just [aw] -> getTitle aw >>= updateTitle >> startOrKillXCape
+    Just [aw] -> getTitle aw >>= startOrKillXCape
     _         -> return ()
 
 -- | Given an event, call a handler. In this case the only thing we care about
@@ -194,20 +194,12 @@ permitBadWindow action = do
       | fromIntegral t == badWindow = return ()
     handleError _ = print "actual error"
 
--- | Given a window title that may exist, update the window title in XMan's
--- state
-updateTitle :: Maybe WindowTitle -> XMan ()
-updateTitle newTitle = modify (\s -> s { currentTitle = newTitle } )
-
--- | Start or stop xcape given the state in XMan
-startOrKillXCape :: XMan ()
-startOrKillXCape = do
-  -- TODO this is redundant
-  title <- gets currentTitle
-  case title of
-    Just t -> asks regexps >>= \r ->
-      if any (t =~) r then stopXCape else startXCape
-    Nothing -> startXCape
+-- | Given a window title that may exist, start or stop xcape given
+startOrKillXCape :: Maybe WindowTitle -> XMan ()
+startOrKillXCape = \case
+  Just title -> asks regexps >>= \rs ->
+    if any (title =~) rs then stopXCape else startXCape
+  Nothing -> startXCape
 
 -- | Start xcape if it is not already running
 startXCape :: XMan ()
