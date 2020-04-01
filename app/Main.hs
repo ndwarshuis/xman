@@ -1,6 +1,5 @@
 {-# LANGUAGE DeriveFunctor              #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# LANGUAGE LambdaCase                 #-}
 
 --------------------------------------------------------------------------------
 -- | Xcape MANager (XMan) - a wrapper for managing xcape
@@ -24,9 +23,6 @@
 -- will not be updated or restarted. Furthermore, it is outside the scope of
 -- this program to bind multiple xcape mappings with multiple keymaps
 
--- TODO actually match the command associated with the window? Might be simpler
--- and more reliable since the title can be changed on the fly
-
 module Main where
 
 import           Control.Monad             (forM_, forever, void, when)
@@ -35,9 +31,6 @@ import           Control.Monad.State
 
 import           Data.List                 (any)
 import           Data.Maybe                (isJust)
-
-import           Foreign.C.String          (castCCharToChar)
-import           Foreign.C.Types           (CLong)
 
 import           Graphics.X11.Types
 import           Graphics.X11.Xlib.Atom
@@ -54,14 +47,12 @@ import           System.Posix.IO
 import           System.Posix.Signals
 import           System.Process
 
-type WindowTitle = String
-
 --------------------------------------------------------------------------------
 -- | Central State+Reader+IO Monad (I wonder where this idea came from...)
 --
 -- The Reader portion holds some of the key data structures from X that we care
--- about as well as the regular expression patterns to match and the keys to
--- pass the xcape command.
+-- about as well as the regular expression patterns to match the app names we
+-- care about and and the bindings to pass to the xcape command.
 --
 -- The State portion holds the xcape process handle (so we can kill it later)
 newtype XMan a = XMan (ReaderT XMConf (StateT XMState IO) a) deriving
@@ -77,10 +68,18 @@ data XMConf = XMConf
     { display         :: Display
     , theRoot         :: Window
     , netActiveWindow :: Atom
-    , netWMName       :: Atom
-    , regexps         :: [String]
-    , xcapeKeys       :: String
+    , regexps         :: Patterns
+    , xcapeKeys       :: Bindings
     }
+
+-- | regular expression patterns
+type Patterns = [String]
+
+-- | bindings for xcape
+type Bindings = String
+
+-- | window app name
+type AppName = String
 
 --------------------------------------------------------------------------------
 
@@ -95,25 +94,21 @@ parse _      = usage
 
 -- | Print the usage and exit
 usage :: IO ()
--- TODO produce relevant exit codes here
-usage = putStrLn "xman XCAPE_KEYS REGEXP [[REGEXP]...]"
+usage = putStrLn "xman BINDINGS REGEXP [[REGEXP]...]"
 
--- | Given a string of keys for xcape and a list of regular expressions to match
--- the window titles we care about, initialize the XMan monad and run the main
--- event loop.
-initXMan :: String -> [String] -> IO ()
+-- | Given xcape bindings and regular expression patterns to match the window
+-- titles we care about, initialize the XMan monad and run the main event loop
+initXMan :: Bindings -> Patterns -> IO ()
 initXMan x r = do
   -- ignore SIGCHLD so we don't produce zombie processes
   void $ installHandler sigCHLD Ignore Nothing
   dpy <- openDisplay ""
   root <- rootWindow dpy $ defaultScreen dpy
   naw <- internAtom dpy "_NET_ACTIVE_WINDOW" False
-  nwn <- internAtom dpy "_NET_WM_NAME" False
   let cf = XMConf
              { display = dpy
              , theRoot = root
              , netActiveWindow = naw
-             , netWMName = nwn
              , regexps = r
              , xcapeKeys = x
              }
@@ -143,7 +138,7 @@ updateXCape = do
   root <- asks theRoot
   prop <- io $ getWindowProperty32 dpy atom root
   case prop of
-    Just [aw] -> getTitle aw >>= startOrKillXCape
+    Just [aw] -> getAppName (fromIntegral aw) >>= startOrKillXCape
     _         -> return ()
 
 -- | Given an event, call a handler. In this case the only thing we care about
@@ -155,25 +150,9 @@ handle PropertyEvent { ev_atom = a } = do
   when (a == atom) updateXCape
 handle _ = return ()
 
--- | Get the title of a window given a window ID
--- The window title could be in two atoms. This will try _NET_WM_NAME first
--- before trying WM_NAME (legacy)
-getTitle :: CLong -> XMan (Maybe WindowTitle)
-getTitle winID = do
-  nwn <- asks netWMName
-  doMaybe [nwn, wM_NAME] $ getTitle' winID
-  where
-    doMaybe (x:xs) f = f x >>= (\r -> if isJust r then return r else doMaybe xs f)
-    doMaybe [] _ = return Nothing
-
--- | Get the title of a window given a window ID and an atom that may contain
--- the title
-getTitle' :: CLong -> Atom -> XMan (Maybe WindowTitle)
-getTitle' winID atom = do
-  dpy <- asks display
-  title' <- io $ permitBadWindow $ getWindowProperty8 dpy atom
-    $ fromIntegral winID
-  return $ fmap (fmap castCCharToChar) title'
+-- | Given a window, return its app name
+getAppName :: Window -> XMan AppName
+getAppName w = asks display >>= io . fmap resName . flip getClassHint w
 
 -- | Given an IO action (which is assumed to call an XLib function that may
 -- throw an error), attach an error handler before performing the action and
@@ -194,12 +173,12 @@ permitBadWindow action = do
       | fromIntegral t == badWindow = return ()
     handleError _ = print "actual error"
 
--- | Given a window title that may exist, start or stop xcape given
-startOrKillXCape :: Maybe WindowTitle -> XMan ()
-startOrKillXCape = \case
-  Just title -> asks regexps >>= \rs ->
-    if any (title =~) rs then stopXCape else startXCape
-  Nothing -> startXCape
+-- | Given an app name, start or stop xcape if it matches any of the supplied
+-- regular expressions in XMan
+startOrKillXCape :: AppName -> XMan ()
+startOrKillXCape name = do
+  rs <- asks regexps
+  if any (name =~) rs then stopXCape else startXCape
 
 -- | Start xcape if it is not already running
 startXCape :: XMan ()
@@ -220,14 +199,14 @@ stopXCape = do
     modify $ \s -> s { xcapeProcess = Nothing }
     io $ print "stopped xcape"
 
--- | Given the keys argument for xcape, run xcape with the keys argument and
--- return the process handle. Run xcape in debug mode (this will make it run as
--- a foreground process, otherwise it will fork unnecessarily) and pipe the
--- output and error streams to the null device.
--- NOTE: use the process module here rather than the unix module. The latter
--- has the 'forkProcess' function which may fail if multiple instances of xcape
--- are started and killed in quick succession (Resource unavailable error).
-runXcape :: String -> IO ProcessHandle
+-- | Given xcape bindings, run xcape with the bindings argument and return the
+-- process handle. Run xcape in debug mode (this will make it run as a
+-- foreground process, otherwise it will fork unnecessarily) and pipe the output
+-- and error streams to the null device
+-- NOTE: use the process module here rather than the unix module. The latter has
+-- the 'forkProcess' function which may fail if multiple instances of xcape are
+-- started and killed in quick succession (Resource unavailable error).
+runXcape :: Bindings -> IO ProcessHandle
 runXcape keys = do
   dn <- fmap UseHandle $ fdToHandle
     =<< openFd "/dev/null" ReadOnly Nothing defaultFileFlags
