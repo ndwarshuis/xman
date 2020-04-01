@@ -1,0 +1,37 @@
+cabal-version: 1.12
+
+-- This file has been generated from package.yaml by hpack version 0.31.2.
+--
+-- see: https://github.com/sol/hpack
+--
+-- hash: 32a585abcde8be89acd003c83fd878360a2fa7ed9a02418cbcbf6539cfd85401
+
+name:           xman-hs
+version:        0.1.0.0
+description:    Please see the README on GitHub at <https://github.com/ndwarshuis/xman-hs#readme>
+homepage:       https://github.com/ndwarshuis/xman-hs#readme
+bug-reports:    https://github.com/ndwarshuis/xman-hs/issues
+author:         Nathan Dwarshuis
+maintainer:     ndwar@yavin4.ch
+copyright:      2020 Nathan Dwarshuis
+license:        BSD3
+license-file:   LICENSE
+build-type:     Simple
+
+extra-source-files:
+    README.md
+
+executable xman-hs
+  main-is: Main.hs
+  hs-source-dirs:
+      app
+  ghc-options: -Wall -Werror -fno-warn-missing-signatures -threaded -rtsopts -with-rtsopts=-N
+  build-depends:
+      base >=4.7 && <5
+    , X11
+    , mtl >= 2.2.2
+    , unix >= 2.7.2.2
+    , regex-tdfa >= 1.2.3.2
+    , process >= 1.6.5.0
+  default-language: Haskell2010
+
