@@ -6,7 +6,7 @@ cabal-version: 1.12
 --
 -- hash: 32a585abcde8be89acd003c83fd878360a2fa7ed9a02418cbcbf6539cfd85401
 
-name:           xman-hs
+name:           xman
 version:        0.1.0.0
 description:    Please see the README on GitHub at <https://github.com/ndwarshuis/xman-hs#readme>
 homepage:       https://github.com/ndwarshuis/xman-hs#readme
@@ -21,7 +21,7 @@ build-type:     Simple
 extra-source-files:
     README.md
 
-executable xman-hs
+executable xman
   main-is: Main.hs
   hs-source-dirs:
       app
