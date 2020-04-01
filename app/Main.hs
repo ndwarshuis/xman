@@ -62,21 +62,24 @@ instance Applicative XMan where
   pure = return
   (<*>) = ap
 
-newtype XMState = XMState { xcapeProcess :: Maybe ProcessHandle }
+newtype XMState = XMState { xcapeHandle :: Maybe ProcessHandle }
 
 data XMConf = XMConf
     { display         :: Display
     , theRoot         :: Window
     , netActiveWindow :: Atom
     , regexps         :: Patterns
-    , xcapeKeys       :: Bindings
+    , xcapeProcess    :: CreateProcess
     }
 
--- | regular expression patterns
-type Patterns = [String]
+-- | timeout for xcape
+type Timeout = Maybe String
 
 -- | bindings for xcape
 type Bindings = String
+
+-- | regular expression patterns
+type Patterns = [String]
 
 -- | window app name
 type AppName = String
@@ -88,18 +91,26 @@ main = getArgs >>= parse
 
 -- | Given a list of arguments, either start the program or print the usage
 parse :: [String] -> IO ()
-parse [_]    = usage
-parse (x:rs) = initXMan x rs
-parse _      = usage
+parse [_]           = usage
+parse ("-t":t:b:rs) = initXMan rs $ mkXcapeProcess (Just t) b
+parse (b:rs)        = initXMan rs $ mkXcapeProcess Nothing b
+parse _             = usage
+
+-- | Given a timeout and bindings for xcape, return a process record. This will
+-- run xcape in debug mode (which will make it run as a foreground process,
+-- otherwise it will fork unnecessarily).
+mkXcapeProcess :: Timeout -> Bindings -> CreateProcess
+mkXcapeProcess (Just t) b =  proc "xcape" $ ["-t", t, "-d", "-e"] ++ [b]
+mkXcapeProcess Nothing b  =  proc "xcape" $ ["-d", "-e"] ++ [b]
 
 -- | Print the usage and exit
 usage :: IO ()
-usage = putStrLn "xman BINDINGS REGEXP [[REGEXP] ...]"
+usage = putStrLn "xman [-t TIMEOUT] BINDINGS REGEXP [[REGEXP] ...]"
 
 -- | Given xcape bindings and regular expression patterns to match the window
 -- titles we care about, initialize the XMan monad and run the main event loop
-initXMan :: Bindings -> Patterns -> IO ()
-initXMan x r = do
+initXMan :: Patterns -> CreateProcess -> IO ()
+initXMan rs cp = do
   -- ignore SIGCHLD so we don't produce zombie processes
   void $ installHandler sigCHLD Ignore Nothing
   dpy <- openDisplay ""
@@ -109,10 +120,10 @@ initXMan x r = do
              { display = dpy
              , theRoot = root
              , netActiveWindow = naw
-             , regexps = r
-             , xcapeKeys = x
+             , regexps = rs
+             , xcapeProcess = cp
              }
-      st = XMState { xcapeProcess = Nothing }
+      st = XMState { xcapeHandle = Nothing }
   -- listen only for PropertyNotify events on the root window
   allocaSetWindowAttributes $ \a -> do
     set_event_mask a propertyChangeMask
@@ -121,6 +132,7 @@ initXMan x r = do
     runXMan cf st $ do
       updateXCape -- set the initial state before entering main loop
       forever $ handle =<< io (nextEvent dpy e >> getEvent e)
+
 
 -- | Lift an IO monad into the XMan context
 io :: MonadIO m => IO a -> m a
@@ -183,34 +195,30 @@ startOrKillXCape name = do
 -- | Start xcape if it is not already running
 startXCape :: XMan ()
 startXCape = do
-  pID <- gets xcapeProcess
+  pID <- gets xcapeHandle
   unless (isJust pID) $ do
-    x <- asks xcapeKeys
-    h <- io $ runXcape x
-    modify $ \s -> s { xcapeProcess = Just h }
+    cp <- asks xcapeProcess
+    h <- io $ createProcessNull cp
+    modify $ \s -> s { xcapeHandle = Just h }
     io $ print "started xcape"
 
 -- | Stop xcape if it is running
 stopXCape :: XMan ()
 stopXCape = do
-  pID <- gets xcapeProcess
+  pID <- gets xcapeHandle
   forM_ pID $ \p -> do
     io $ terminateProcess p
-    modify $ \s -> s { xcapeProcess = Nothing }
+    modify $ \s -> s { xcapeHandle = Nothing }
     io $ print "stopped xcape"
 
--- | Given xcape bindings, run xcape with the bindings argument and return the
--- process handle. Run xcape in debug mode (this will make it run as a
--- foreground process, otherwise it will fork unnecessarily) and pipe the output
--- and error streams to the null device
+-- | Given a createProcess record, start the process with stderr and stdout
+-- redirected to the null device
 -- NOTE: use the process module here rather than the unix module. The latter has
 -- the 'forkProcess' function which may fail if multiple instances of xcape are
 -- started and killed in quick succession (Resource unavailable error).
-runXcape :: Bindings -> IO ProcessHandle
-runXcape keys = do
-  dn <- fmap UseHandle $ fdToHandle
-    =<< openFd "/dev/null" ReadOnly Nothing defaultFileFlags
-  -- TODO pass more arguments here? this hardcodes the timeout
-  let cp = proc "xcape" $ ["-d", "-t", "500", "-e"] ++ [keys]
+createProcessNull :: CreateProcess -> IO ProcessHandle
+createProcessNull cp = do
+  fd <- openFd "/dev/null" ReadOnly Nothing defaultFileFlags
+  dn <- UseHandle <$> fdToHandle fd
   (_, _, _, h) <- createProcess $ cp { std_err = dn, std_out = dn }
   return h
