@@ -23,7 +23,7 @@
 -- will not be updated or restarted. Furthermore, it is outside the scope of
 -- this program to bind multiple xcape mappings with multiple keymaps
 
-module Main where
+module Main (main) where
 
 import           Control.Monad             (forM_, forever, void, when)
 import           Control.Monad.Reader
@@ -164,7 +164,8 @@ handle _ = return ()
 
 -- | Given a window, return its app name
 getAppName :: Window -> XMan AppName
-getAppName w = asks display >>= io . fmap resName . flip getClassHint w
+getAppName w = io . fmap resName . permitBadWindow . flip getClassHint w =<<
+  asks display
 
 -- | Given an IO action (which is assumed to call an XLib function that may
 -- throw an error), attach an error handler before performing the action and
