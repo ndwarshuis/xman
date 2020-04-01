@@ -1,5 +1,5 @@
 # XMan
-A daemon to manage [https://github.com/alols/xcape](xcape) instances based on
+A daemon to manage [xcape](https://github.com/alols/xcape) instances based on
 which app is in focus.
 
 Xcape allows one to configure any key to send an arbitrary key upon release (for instance, the Control key can function as itself on keypress and an Escape key on key release).
