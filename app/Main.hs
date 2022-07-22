@@ -148,10 +148,12 @@ updateXCape = do
   dpy <- asks display
   atom <- asks netActiveWindow
   root <- asks theRoot
+  -- find the active window; if none are found, assume there are no windows
+  -- open, in which case xcape should be running
   prop <- io $ getWindowProperty32 dpy atom root
   case prop of
     Just [aw] -> getAppName (fromIntegral aw) >>= startOrKillXCape
-    _         -> return ()
+    _         -> startXCape
 
 -- | Given an event, call a handler. In this case the only thing we care about
 -- are PropertyNotify events where the atom is _NET_ACTIVE_WINDOW, which will
