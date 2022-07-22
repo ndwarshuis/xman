@@ -42,6 +42,7 @@ import           Graphics.X11.Xlib.Types
 
 import           Text.Regex.TDFA
 
+import           System.Directory
 import           System.Environment
 import           System.Posix.IO
 import           System.Posix.Signals
@@ -96,12 +97,15 @@ parse ("-t":t:b:rs) = initXMan rs $ mkXcapeProcess (Just t) b
 parse (b:rs)        = initXMan rs $ mkXcapeProcess Nothing b
 parse _             = usage
 
+xcapeExe :: String
+xcapeExe = "xcape"
+
 -- | Given a timeout and bindings for xcape, return a process record. This will
 -- run xcape in debug mode (which will make it run as a foreground process,
 -- otherwise it will fork unnecessarily).
 mkXcapeProcess :: Timeout -> Bindings -> CreateProcess
-mkXcapeProcess (Just t) b =  proc "xcape" $ ["-t", t, "-d", "-e"] ++ [b]
-mkXcapeProcess Nothing b  =  proc "xcape" $ ["-d", "-e"] ++ [b]
+mkXcapeProcess (Just t) b =  proc xcapeExe $ ["-t", t, "-d", "-e"] ++ [b]
+mkXcapeProcess Nothing b  =  proc xcapeExe $ ["-d", "-e"] ++ [b]
 
 -- | Print the usage and exit
 usage :: IO ()
@@ -111,27 +115,35 @@ usage = putStrLn "xman [-t TIMEOUT] BINDINGS REGEXP [[REGEXP] ...]"
 -- titles we care about, initialize the XMan monad and run the main event loop
 initXMan :: Patterns -> CreateProcess -> IO ()
 initXMan rs cp = do
-  -- ignore SIGCHLD so we don't produce zombie processes
-  void $ installHandler sigCHLD Ignore Nothing
-  dpy <- openDisplay ""
-  root <- rootWindow dpy $ defaultScreen dpy
-  naw <- internAtom dpy "_NET_ACTIVE_WINDOW" False
-  let cf = XMConf
-             { display = dpy
-             , theRoot = root
-             , netActiveWindow = naw
-             , regexps = rs
-             , xcapeProcess = cp
-             }
-      st = XMState { xcapeHandle = Nothing }
-  -- listen only for PropertyNotify events on the root window
-  allocaSetWindowAttributes $ \a -> do
-    set_event_mask a propertyChangeMask
-    changeWindowAttributes dpy root cWEventMask a
-  void $ allocaXEvent $ \e ->
-    runXMan cf st $ do
-      updateXCape -- set the initial state before entering main loop
-      forever $ handle =<< io (nextEvent dpy e >> getEvent e)
+  r <- checkXcape
+  if r then initX else putStrLn "could not find xcape binary"
+  where
+    initX = do
+      -- ignore SIGCHLD so we don't produce zombie processes
+      void $ installHandler sigCHLD Ignore Nothing
+      dpy <- openDisplay ""
+      root <- rootWindow dpy $ defaultScreen dpy
+      naw <- internAtom dpy "_NET_ACTIVE_WINDOW" False
+      let cf = XMConf
+                 { display = dpy
+                 , theRoot = root
+                 , netActiveWindow = naw
+                 , regexps = rs
+                 , xcapeProcess = cp
+                 }
+          st = XMState { xcapeHandle = Nothing }
+      -- listen only for PropertyNotify events on the root window
+      allocaSetWindowAttributes $ \a -> do
+        set_event_mask a propertyChangeMask
+        changeWindowAttributes dpy root cWEventMask a
+      void $ allocaXEvent $ \e ->
+        runXMan cf st $ do
+          updateXCape -- set the initial state before entering main loop
+          forever $ handle =<< io (nextEvent dpy e >> getEvent e)
+
+checkXcape :: IO Bool
+checkXcape = isJust <$> findExecutable xcapeExe
+
 
 
 -- | Lift an IO monad into the XMan context
