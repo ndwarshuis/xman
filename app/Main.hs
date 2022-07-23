@@ -25,11 +25,10 @@
 
 module Main (main) where
 
-import           Control.Monad             (forM_, forever, void, when)
+import           Control.Monad
 import           Control.Monad.Reader
 import           Control.Monad.State
 
-import           Data.List                 (any)
 import           Data.Maybe                (isJust)
 
 import           Graphics.X11.Types
@@ -97,6 +96,7 @@ parse ("-t":t:b:rs) = initXMan rs $ mkXcapeProcess (Just t) b
 parse (b:rs)        = initXMan rs $ mkXcapeProcess Nothing b
 parse _             = usage
 
+-- | The name of the xcape executable
 xcapeExe :: String
 xcapeExe = "xcape"
 
@@ -141,10 +141,9 @@ initXMan rs cp = do
           updateXCape -- set the initial state before entering main loop
           forever $ handle =<< io (nextEvent dpy e >> getEvent e)
 
+-- | Return true if xcape is installed
 checkXcape :: IO Bool
 checkXcape = isJust <$> findExecutable xcapeExe
-
-
 
 -- | Lift an IO monad into the XMan context
 io :: MonadIO m => IO a -> m a
